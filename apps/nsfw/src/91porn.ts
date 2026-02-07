@@ -1,19 +1,27 @@
-import { compact } from "es-toolkit";
-import { WidgetAPI } from "./utils";
+/**
+ * Forward Widget Module: 91Porn (Fixed Version)
+ * 适配自作者原始 TypeScript 逻辑，修复了数据缺失与功能对齐问题
+ */
 
 const DEFAULT_BASE_URL = "https://91porn.com";
 
-const widgetAPI = new WidgetAPI();
-
+// 版本号生成逻辑
 const widgetVersion = (() => {
-  if (process.env.NODE_ENV === "production") {
-    return process.env.PACKAGE_VERSION;
-  }
   const date = new Date();
-  return `0.0.0-${[date.getFullYear(), date.getMonth() + 1, date.getDate(), date.getHours(), date.getMinutes()]
-    .map((item) => item.toString().padStart(2, "0"))
-    .join("")}`;
+  return `0.0.1-${
+   .map((item) => item.toString().padStart(2, "0"))
+   .join("")}`;
 })();
+
+/**
+ * 助手函数：处理相对路径补全
+ */
+const fixUrl = (url, baseUrl) => {
+  if (!url) return "";
+  if (url.startsWith("http")) return url;
+  const base = baseUrl.endsWith("/")? baseUrl.slice(0, -1) : baseUrl;
+  return url.startsWith("/")? `${base}${url}` : `${base}/${url}`;
+};
 
 WidgetMetadata = {
   id: "nsfw.91porn",
@@ -22,44 +30,10 @@ WidgetMetadata = {
   author: "匿名",
   version: widgetVersion,
   requiredVersion: "0.0.1",
-  site: "https://github.com/baranwang/forward-widgets/tree/main/apps/nsfw",
+  site: "https://github.com/baranwang/forward-widgets",
   detailCacheDuration: 1,
-  globalParams: [
-    {
-      name: "base_url",
-      title: "基础 URL",
-      type: "input",
-      value: DEFAULT_BASE_URL,
-    },
-  ],
-  modules: [
-    {
-      id: "91porn.list",
-      title: "🔞 91Porn 视频搜索",
-      description: "🔞 91Porn 视频搜索",
-      cacheDuration: 3600,
-      requiresWebView: false,
-      functionName: "get91pornList",
-      params: [
-        {
-          name: "sort_by",
-          title: "分类",
-          description: "分类",
-          type: "enumeration",
-          value: "rf",
-          enumOptions: [
-            { value: "rf", title: "最近加精" },
-            { value: "hot", title: "当前最热" },
-            { value: "top", title: "本月最热" },
-            { value: "tf", title: "本月收藏" },
-            { value: "md", title: "本月讨论" },
-            { value: "top&m=-1", title: "上月最热" },
-            { value: "ori", title: "91原创" },
-            { value: "long", title: "10分钟以上 " },
-            { value: "longer", title: "20分钟以上 " },
-            { value: "hd", title: "高清" },
-            { value: "mf", title: "收藏最多" },
-          ],
+  globalParams:,
+  modules:,
         },
         {
           name: "page",
@@ -78,179 +52,177 @@ WidgetMetadata = {
   ],
 };
 
+/**
+ * 获取视频列表
+ */
 get91pornList = async (params) => {
-  params.sort_by ||= "ori";
-  params.page ||= "1";
-  params.base_url ||= DEFAULT_BASE_URL;
+  const baseUrl = params.base_url |
+
+| DEFAULT_BASE_URL;
+  const sortBy = params.sort_by |
+
+| "rf";
+  const page = params.page |
+
+| "1";
 
   try {
-    const $ = await widgetAPI.getHtml(
-      `${params.base_url}/v.php?category=${params.sort_by}&viewtype=basic&page=${params.page}`,
-    );
-    if (!$) {
-      return [];
-    }
-
-    const list = Array.from($(".videos-text-align")).map<VideoItem | null>((el) => {
-      const $el = $(el);
-      const $parent = $el.closest(".col-lg-8");
-      if ($parent.length > 0) {
-        console.debug("跳过蜜罐");
-        return null;
+    const targetUrl = `${baseUrl}/v.php?category=${sortBy}&viewtype=basic&page=${page}`;
+    const response = await Widget.http.get(targetUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Referer": baseUrl
       }
-
-      const link = $el.find("a").attr("href");
-      if (!link) {
-        console.debug("跳过没有链接的元素");
-        return null;
-      }
-
-      const backdropPath = $el.find(".img-responsive").attr("src");
-
-      const result: VideoItem = {
-        id: link,
-        type: "url",
-        mediaType: "movie",
-        link,
-        title: $el.find(".video-title").text().trim(),
-        backdropPath,
-      };
-
-      try {
-        result.durationText = $el.find(".duration").text().trim();
-      } catch (error) {}
-
-      try {
-        const videoID = backdropPath?.split("/").pop()?.split(".").shift();
-        if (videoID) {
-          result.previewUrl = `https://vthumb.killcovid2021.com/thumb/${videoID}.mp4`;
-        }
-      } catch (error) {}
-
-      try {
-        const addTimeEl = $el.find(".info").filter((_, el) => $(el).text().includes("添加时间"));
-        const nextSibling = addTimeEl[0]?.nextSibling;
-        const addTime = nextSibling && "textContent" in nextSibling ? nextSibling.textContent : undefined;
-        if (addTime && typeof addTime === "string") {
-          result.releaseDate = addTime.trim();
-        }
-      } catch (error) {}
-
-      return result;
     });
 
-    return compact(list);
+    if (!response ||!response.data) return;
+
+    const $ = Widget.html.load(response.data);
+    const results =;
+
+    $(".videos-text-align").each((_, el) => {
+      const $el = $(el);
+      
+      // 1. 蜜罐检测
+      if ($el.closest(".col-lg-8").length > 0) return;
+
+      const linkAttr = $el.find("a").attr("href");
+      if (!linkAttr) return;
+
+      const fullLink = fixUrl(linkAttr, baseUrl);
+      const backdropPath = $el.find(".img-responsive").attr("src");
+
+      const item = {
+        id: fullLink,
+        type: "url",
+        mediaType: "movie",
+        link: fullLink,
+        title: $el.find(".video-title").text().trim(),
+        coverUrl: fixUrl(backdropPath, baseUrl), // 映射为 Forward 标准字段
+      };
+
+      // 提取时长
+      try {
+        item.durationText = $el.find(".duration").text().trim();
+      } catch (e) {}
+
+      // 2. 生成预览预览地址
+      try {
+        const videoID = backdropPath && backdropPath.split("/").pop().split(".").shift();
+        if (videoID) {
+          item.previewUrl = `https://vthumb.killcovid2021.com/thumb/${videoID}.mp4`;
+        }
+      } catch (e) {}
+
+      // 3. 提取发布日期（处理 textContent）
+      try {
+        const addTimeEl = $el.find(".info").filter((_, e) => $(e).text().includes("添加时间"));
+        const nextNode = addTimeEl && addTimeEl.nextSibling;
+        if (nextNode && nextNode.nodeType === 3) { // 文本节点
+          item.releaseDate = nextNode.nodeValue.trim();
+        }
+      } catch (e) {}
+
+      results.push(item);
+    });
+
+    return results;
   } catch (error) {
-    console.error("Failed to get 91porn list", error);
-    return [];
+    console.error("List Load Failed:", error);
+    return;
   }
 };
 
-type LoadDetailReturnType = Omit<VideoItem, "videoUrl"> & Pick<Required<VideoItem>, "videoUrl">;
-
+/**
+ * 加载视频详情与解密
+ */
 loadDetail = async (url) => {
   try {
-    const $ = await widgetAPI.getHtml(url);
-    if (!$) {
-      throw new Error("未找到视频资源");
-    }
+    const response = await Widget.http.get(url, {
+      headers: { "Referer": DEFAULT_BASE_URL }
+    });
+    if (!response ||!response.data) throw new Error("Detail empty");
+
+    const $ = Widget.html.load(response.data);
     const player = $("#player_one");
     const script = player.find("script").text();
-    const sourceHtml = decodeURIComponent(script.match(/strencode2\("(.*?)"\)/)?.[1] || "");
-    const $source = await Widget.html.load(sourceHtml);
+    
+    // 4. strencode2 解码
+    const match = script.match(/strencode2\("(.*?)"\)/);
+    if (!match) throw new Error("strencode2 not found");
+    
+    const sourceHtml = decodeURIComponent(match[1]);
+    const $source = Widget.html.load(sourceHtml);
     const videoUrl = $source("source").attr("src");
-    if (!videoUrl) {
-      throw new Error("未找到视频资源");
-    }
 
-    const result: LoadDetailReturnType = {
+    if (!videoUrl) throw new Error("Video URL not found");
+
+    const result = {
       id: url,
       type: "detail",
       mediaType: "movie",
       link: url,
       title: $("#videodetails h4").first().text().trim(),
-      backdropPath: player.attr("poster"),
-      videoUrl,
+      coverUrl: player.attr("poster"),
+      videoUrl: videoUrl,
     };
 
+    // 提取描述并处理换行
     try {
-      const duration = $("#useraction")
-        .find(".info")
-        .filter((_, el) => $(el).text().includes("时长"))
-        .find(".video-info-span")
-        .text()
-        .trim();
-      if (duration) {
-        result.durationText = duration;
+      const descHtml = $("#v_desc").html();
+      if (descHtml) {
+        result.description = Widget.html.load(descHtml.replace(/<br\s*\/?>/g, "\n")).text().trim();
       }
-    } catch (error) {}
+    } catch (e) {}
 
+    // 提取相关视频 (ChildItems)
     try {
-      const releaseDate = $(".title-yakov").eq(0).text();
-      if (releaseDate) {
-        result.releaseDate = releaseDate;
-      }
-    } catch (error) {}
-
-    try {
-      const description = (
-        await Widget.html.load(
-          $("#v_desc")
-            .html()!
-            .replace(/<br\s*\/?>/g, "\n"),
-        )
-      ).text();
-      if (description) {
-        result.description = description;
-      }
-    } catch (error) {}
-
-    try {
-      result.childItems = compact(
-        Array.from($(".well")).map((el) => {
-          const $el = $(el);
-          const link = $el.find("a").attr("href");
-          if (!link) {
-            return null;
-          }
-          const title = $el.find(".video-title").text().trim();
-          const durationText = $el.find(".duration").text().trim();
-          return {
-            id: link,
-            type: "url",
-            mediaType: "movie",
-            link,
-            title,
-            durationText,
-            backdropPath: $el.find(".img-responsive").attr("src"),
-          } as VideoItemChild;
-        }),
-      );
-    } catch (error) {}
+      const children =;
+      $(".well").each((_, el) => {
+        const $el = $(el);
+        const childLink = $el.find("a").attr("href");
+        if (!childLink) return;
+        
+        children.push({
+          id: fixUrl(childLink, DEFAULT_BASE_URL),
+          type: "url",
+          mediaType: "movie",
+          link: fixUrl(childLink, DEFAULT_BASE_URL),
+          title: $el.find(".video-title").text().trim(),
+          durationText: $el.find(".duration").text().trim(),
+          coverUrl: fixUrl($el.find(".img-responsive").attr("src"), DEFAULT_BASE_URL),
+        });
+      });
+      result.childItems = children;
+    } catch (e) {}
 
     return result;
   } catch (error) {
-    console.error("Failed to load detail", error);
-    return null as unknown as LoadDetailReturnType;
+    console.error("Load Detail Error:", error);
+    return null;
   }
 };
 
+/**
+ * 资源加载入口
+ */
 loadResource = async (params) => {
-  const { id, link, videoUrl, base_url: baseUrl = DEFAULT_BASE_URL } = params;
+  const baseUrl = params.base_url |
 
-  const url = [id, link, videoUrl].find((item) => item?.startsWith(baseUrl));
+| DEFAULT_BASE_URL;
+  const { id, link, videoUrl } = params;
+  const url = [id, link, videoUrl].find((item) => item && item.startsWith(baseUrl));
 
-  if (!url) {
-    return [];
-  }
+  if (!url) return;
 
-  const result = await loadDetail(url);
+  const detail = await loadDetail(url);
+  if (!detail) return;
 
-  return [
-    {
-      name: result.title,
-      description: result.description ?? "",
-      url: result.videoUrl,
-    },
-  ];
+  return [{
+    name: detail.title,
+    description: detail.description |
+
+| "",
+    url: detail.videoUrl,
+  }];
 };
